@@ -17,6 +17,21 @@ class _RequestError(Exception):
     pass
 
 
+class _UserNotFound(Exception):
+    """Fake UserNotFound."""
+    pass
+
+
+class _UserNotConfirmed(Exception):
+    """Fake UserNotConfirmed."""
+    pass
+
+
+class _PasswordChangeRequired(Exception):
+    """Fake PasswordChangeRequired."""
+    pass
+
+
 class _FakeUser:
     """Fake user API."""
     async def get_info(self):
@@ -41,21 +56,88 @@ class _FakeDevice:
 
 
 class _FakeAPI:
-    """Fake aiorinnai API."""
-    def __init__(self):
-        self.user = _FakeUser()
-        self.device = _FakeDevice()
-        self.access_token = "test_access_token"
-        self.refresh_token = "test_refresh_token"
-        self._should_fail = False
+    """Fake aiorinnai API matching real aiorinnai.API signature."""
+    def __init__(
+        self,
+        session=None,
+        timeout: float = 30.0,
+        retry_count: int = 3,
+        retry_delay: float = 1.0,
+        retry_multiplier: float = 2.0,
+        executor_timeout: float = 30.0,
+    ):
+        # Match real API attributes
+        self.session = session
+        self.timeout = timeout
+        self.retry_count = retry_count
+        self.retry_delay = retry_delay
+        self.retry_multiplier = retry_multiplier
+        self.executor_timeout = executor_timeout
+        self.username = None
+        self.is_connected = False
+        
+        # Private token attributes (real API only has private ones)
+        self._access_token = None
+        self._refresh_token = None
+        self._id_token = None
+        
+        # Sub-objects (None until login, like real API)
+        self.user = None
+        self.device = None
+        
+        # Test control flags
         self._fail_with_request_error = False
+    
+    @property
+    def access_token(self):
+        """Public accessor for access token (for config_flow.py compatibility)."""
+        return self._access_token
+    
+    @property
+    def refresh_token(self):
+        """Public accessor for refresh token (for config_flow.py compatibility)."""
+        return self._refresh_token
 
     async def async_login(self, email: str, password: str):
+        """Simulate login - populates user/device and tokens."""
         if self._fail_with_request_error:
             raise _RequestError("Connection failed")
-        self.access_token = "new_access_token"
-        self.refresh_token = "new_refresh_token"
+        self.username = email
+        self.is_connected = True
+        self._access_token = "new_access_token"
+        self._refresh_token = "new_refresh_token"
+        self._id_token = "new_id_token"
+        # Populate sub-objects after login (like real API)
+        self.user = _FakeUser()
+        self.device = _FakeDevice()
         return None
+
+    async def async_renew_access_token(
+        self,
+        email: str | None = None,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+    ):
+        """Simulate token renewal."""
+        if self._fail_with_request_error:
+            raise _RequestError("Connection failed")
+        self.username = email
+        self.is_connected = True
+        self._access_token = "renewed_access_token"
+        self._refresh_token = "renewed_refresh_token"
+        self._id_token = "renewed_id_token"
+        # Populate sub-objects after token renewal (like real API)
+        self.user = _FakeUser()
+        self.device = _FakeDevice()
+        return None
+
+    async def async_check_token(self):
+        """Check if token is valid."""
+        pass
+
+    def close(self):
+        """Close the session."""
+        pass
 
 
 def _ensure_package_modules(repo_root: pathlib.Path):
@@ -90,6 +172,9 @@ def _install_fake_aiorinnai(monkeypatch):
     mod_aiorinnai.API = _FakeAPI
     mod_ai.API = _FakeAPI
     mod_err.RequestError = _RequestError
+    mod_err.UserNotFound = _UserNotFound
+    mod_err.UserNotConfirmed = _UserNotConfirmed
+    mod_err.PasswordChangeRequired = _PasswordChangeRequired
 
     monkeypatch.setitem(sys.modules, "aiorinnai", mod_aiorinnai)
     monkeypatch.setitem(sys.modules, "aiorinnai.api", mod_ai)
@@ -128,6 +213,8 @@ async def test_config_flow_user_step_shows_form(hass, monkeypatch):
 @pytest.mark.asyncio
 async def test_config_flow_user_step_success(hass, monkeypatch):
     """Test successful multi-step flow creates config entry."""
+    import asyncio
+
     cf_mod = _load_config_flow_module(monkeypatch)
 
     flow = cf_mod.ConfigFlow()
@@ -151,6 +238,10 @@ async def test_config_flow_user_step_success(hass, monkeypatch):
     assert "conf_access_token" in result["data"]
     assert "conf_refresh_token" in result["data"]
 
+    # Allow background tasks and executor shutdown to complete
+    await hass.async_block_till_done()
+    await asyncio.sleep(0.1)
+
 
 @pytest.mark.asyncio
 async def test_config_flow_user_step_connection_error(hass, monkeypatch):
@@ -159,8 +250,8 @@ async def test_config_flow_user_step_connection_error(hass, monkeypatch):
 
     # Make API fail with RequestError
     original_init = _FakeAPI.__init__
-    def failing_init(self):
-        original_init(self)
+    def failing_init(self, session=None, timeout=30.0, retry_count=3, retry_delay=1.0, retry_multiplier=2.0, executor_timeout=30.0):
+        original_init(self, session=session, timeout=timeout, retry_count=retry_count, retry_delay=retry_delay, retry_multiplier=retry_multiplier, executor_timeout=executor_timeout)
         self._fail_with_request_error = True
     monkeypatch.setattr(_FakeAPI, "__init__", failing_init)
 
@@ -244,8 +335,8 @@ async def test_config_flow_reauth_connection_error(hass, monkeypatch):
 
     # Make API fail
     original_init = _FakeAPI.__init__
-    def failing_init(self):
-        original_init(self)
+    def failing_init(self, session=None, timeout=30.0, retry_count=3, retry_delay=1.0, retry_multiplier=2.0, executor_timeout=30.0):
+        original_init(self, session=session, timeout=timeout, retry_count=retry_count, retry_delay=retry_delay, retry_multiplier=retry_multiplier, executor_timeout=executor_timeout)
         self._fail_with_request_error = True
     monkeypatch.setattr(_FakeAPI, "__init__", failing_init)
 

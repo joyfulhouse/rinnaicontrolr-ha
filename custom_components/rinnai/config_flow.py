@@ -7,13 +7,21 @@ from typing import Any
 import voluptuous as vol
 
 from aiorinnai import API
-from aiorinnai.errors import RequestError
+from aiorinnai.errors import (
+    RequestError,
+    UserNotFound,
+    UserNotConfirmed,
+    PasswordChangeRequired,
+)
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -24,15 +32,19 @@ from .const import (
     CONF_CONNECTION_MODE,
     CONF_HOST,
     CONF_MAINT_INTERVAL_ENABLED,
+    CONF_MAINT_INTERVAL_MINUTES,
     CONF_RECIRCULATION_DURATION,
     CONF_REFRESH_TOKEN,
     CONNECTION_MODE_CLOUD,
     CONNECTION_MODE_HYBRID,
     CONNECTION_MODE_LOCAL,
     DEFAULT_MAINT_INTERVAL_ENABLED,
+    DEFAULT_MAINT_INTERVAL_MINUTES,
     DEFAULT_RECIRCULATION_DURATION,
     DOMAIN,
     LOGGER,
+    MAX_MAINT_INTERVAL_MINUTES,
+    MIN_MAINT_INTERVAL_MINUTES,
 )
 from .local import RinnaiLocalClient
 
@@ -135,9 +147,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
         LOGGER.debug("Config flow: attempting cloud login for %s", self.username)
 
         try:
-            self.api = API()
+            # Use Home Assistant's shared session for connection pooling
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            session = async_get_clientsession(self.hass)
+            self.api = API(session=session)
             await self.api.async_login(self.username, self.password)
             LOGGER.debug("Config flow: cloud login successful")
+        except UserNotFound:
+            LOGGER.error("User account not found for %s", self.username)
+            errors["base"] = "invalid_auth"
+            return self.async_show_form(
+                step_id="cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except UserNotConfirmed:
+            LOGGER.error("User email not confirmed for %s", self.username)
+            errors["base"] = "user_not_confirmed"
+            return self.async_show_form(
+                step_id="cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except PasswordChangeRequired:
+            LOGGER.error("Password change required for %s", self.username)
+            errors["base"] = "password_change_required"
+            return self.async_show_form(
+                step_id="cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
         except RequestError as request_error:
             LOGGER.error("Error connecting to the Rinnai API: %s", request_error)
             errors["base"] = "cannot_connect"
@@ -246,8 +286,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
         self.password = user_input[CONF_PASSWORD]
 
         try:
-            self.api = API()
+            # Use Home Assistant's shared session for connection pooling
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            session = async_get_clientsession(self.hass)
+            self.api = API(session=session)
             await self.api.async_login(self.username, self.password)
+        except UserNotFound:
+            LOGGER.error("User account not found for %s", self.username)
+            errors["base"] = "invalid_auth"
+            return self.async_show_form(
+                step_id="hybrid_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except UserNotConfirmed:
+            LOGGER.error("User email not confirmed for %s", self.username)
+            errors["base"] = "user_not_confirmed"
+            return self.async_show_form(
+                step_id="hybrid_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except PasswordChangeRequired:
+            LOGGER.error("Password change required for %s", self.username)
+            errors["base"] = "password_change_required"
+            return self.async_show_form(
+                step_id="hybrid_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
         except RequestError as request_error:
             LOGGER.error("Error connecting to the Rinnai API: %s", request_error)
             errors["base"] = "cannot_connect"
@@ -342,8 +410,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
         self.password = user_input[CONF_PASSWORD]
 
         try:
-            self.api = API()
+            # Use Home Assistant's shared session for connection pooling
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            session = async_get_clientsession(self.hass)
+            self.api = API(session=session)
             await self.api.async_login(self.username, self.password)
+        except UserNotFound:
+            LOGGER.error("Reauth: User account not found for %s", self.username)
+            errors["base"] = "invalid_auth"
+            return self.async_show_form(
+                step_id="reauth",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except UserNotConfirmed:
+            LOGGER.error("Reauth: User email not confirmed for %s", self.username)
+            errors["base"] = "user_not_confirmed"
+            return self.async_show_form(
+                step_id="reauth",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except PasswordChangeRequired:
+            LOGGER.error("Reauth: Password change required for %s", self.username)
+            errors["base"] = "password_change_required"
+            return self.async_show_form(
+                step_id="reauth",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
         except RequestError as request_error:
             LOGGER.error(
                 "Reauth: Error connecting to the Rinnai API: %s", request_error
@@ -487,8 +583,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
         self.password = user_input[CONF_PASSWORD]
 
         try:
-            self.api = API()
+            # Use Home Assistant's shared session for connection pooling
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            session = async_get_clientsession(self.hass)
+            self.api = API(session=session)
             await self.api.async_login(self.username, self.password)
+        except UserNotFound:
+            LOGGER.error("Reconfigure: User account not found for %s", self.username)
+            errors["base"] = "invalid_auth"
+            return self.async_show_form(
+                step_id="reconfigure_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except UserNotConfirmed:
+            LOGGER.error("Reconfigure: User email not confirmed for %s", self.username)
+            errors["base"] = "user_not_confirmed"
+            return self.async_show_form(
+                step_id="reconfigure_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
+        except PasswordChangeRequired:
+            LOGGER.error("Reconfigure: Password change required for %s", self.username)
+            errors["base"] = "password_change_required"
+            return self.async_show_form(
+                step_id="reconfigure_cloud",
+                data_schema=_get_cloud_auth_schema(default_email=self.username),
+                errors=errors,
+            )
         except RequestError as request_error:
             LOGGER.error(
                 "Reconfigure: Error connecting to the Rinnai API: %s", request_error
@@ -531,30 +655,68 @@ class OptionsFlow(config_entries.OptionsFlow):
         """Initialize options flow."""
         self._config_entry = config_entry
 
+    def _supports_maintenance_interval(self) -> bool:
+        """Check if the connection mode supports configurable maintenance interval.
+
+        Only local and hybrid modes support configurable maintenance intervals.
+        Cloud mode uses the default interval.
+        """
+        connection_mode = self._config_entry.data.get(
+            CONF_CONNECTION_MODE, CONNECTION_MODE_CLOUD
+        )
+        return connection_mode in (CONNECTION_MODE_LOCAL, CONNECTION_MODE_HYBRID)
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle options flow."""
         if user_input is not None:
             LOGGER.debug("Options flow: updating options %s", user_input)
+            # For cloud mode, ensure default maintenance interval is used
+            if not self._supports_maintenance_interval():
+                user_input[CONF_MAINT_INTERVAL_MINUTES] = DEFAULT_MAINT_INTERVAL_MINUTES
             return self.async_create_entry(title="", data=user_input)
+
+        # Build schema based on connection mode
+        schema_dict: dict[vol.Optional, Any] = {
+            vol.Optional(
+                CONF_MAINT_INTERVAL_ENABLED,
+                default=self._config_entry.options.get(
+                    CONF_MAINT_INTERVAL_ENABLED, DEFAULT_MAINT_INTERVAL_ENABLED
+                ),
+            ): bool,
+        }
+
+        # Only show maintenance interval slider for local and hybrid modes
+        if self._supports_maintenance_interval():
+            schema_dict[
+                vol.Optional(
+                    CONF_MAINT_INTERVAL_MINUTES,
+                    default=self._config_entry.options.get(
+                        CONF_MAINT_INTERVAL_MINUTES, DEFAULT_MAINT_INTERVAL_MINUTES
+                    ),
+                )
+            ] = NumberSelector(
+                NumberSelectorConfig(
+                    min=MIN_MAINT_INTERVAL_MINUTES,
+                    max=MAX_MAINT_INTERVAL_MINUTES,
+                    step=1,
+                    mode=NumberSelectorMode.SLIDER,
+                    unit_of_measurement="minutes",
+                )
+            )
+
+        # Add recirculation duration option
+        schema_dict[
+            vol.Optional(
+                CONF_RECIRCULATION_DURATION,
+                default=self._config_entry.options.get(
+                    CONF_RECIRCULATION_DURATION, DEFAULT_RECIRCULATION_DURATION
+                ),
+            )
+        ] = vol.All(vol.Coerce(int), vol.Range(min=5, max=300))
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_MAINT_INTERVAL_ENABLED,
-                        default=self._config_entry.options.get(
-                            CONF_MAINT_INTERVAL_ENABLED, DEFAULT_MAINT_INTERVAL_ENABLED
-                        ),
-                    ): bool,
-                    vol.Optional(
-                        CONF_RECIRCULATION_DURATION,
-                        default=self._config_entry.options.get(
-                            CONF_RECIRCULATION_DURATION, DEFAULT_RECIRCULATION_DURATION
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
-                }
-            ),
+            data_schema=vol.Schema(schema_dict),
         )

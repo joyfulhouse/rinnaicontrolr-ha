@@ -93,7 +93,9 @@
             "invalid_auth": "Autenticazione non valida",
             "unknown": "Errore imprevisto",
             "host_required": "L'indirizzo IP dell'host è richiesto per le modalità Locale e Ibrida",
-            "local_connection_failed": "Impossibile connettersi al controller Rinnai all'indirizzo IP specificato. Verificare: (1) L'indirizzo IP è corretto, (2) La porta 9798 è accessibile, (3) Il controller è acceso. Se la connessione locale non è possibile, utilizzare invece la modalità Cloud."
+            "local_connection_failed": "Impossibile connettersi al controller Rinnai all'indirizzo IP specificato. Verificare: (1) L'indirizzo IP è corretto, (2) La porta 9798 è accessibile, (3) Il controller è acceso. Se la connessione locale non è possibile, utilizzare la modalità Cloud.",
+            "user_not_confirmed": "Il tuo indirizzo email non è stato confermato. Controlla la tua email e conferma il tuo account Rinnai prima di continuare.",
+            "password_change_required": "Devi cambiare la password nell'app Rinnai prima di continuare. Aggiorna la password e riprova."
         },
         "abort": {
             "already_configured": "Il dispositivo è già configurato",
@@ -124,10 +126,12 @@
                 "description": "Configura le opzioni per il tuo scaldabagno Rinnai.",
                 "data": {
                     "maint_interval_enabled": "Abilita recupero dati di manutenzione",
+                    "maint_interval_minutes": "Intervallo di recupero manutenzione",
                     "recirculation_duration": "Durata Ricircolo"
                 },
                 "data_description": {
-                    "maint_interval_enabled": "Quando abilitato, recupera dati di manutenzione dettagliati dal dispositivo ogni 5 minuti. Questo può aumentare l'uso dell'API.",
+                    "maint_interval_enabled": "Quando abilitato, recupera dati di manutenzione dettagliati dal dispositivo all'intervallo specificato. Questo può aumentare l'uso dell'API.",
+                    "maint_interval_minutes": "Frequenza di recupero dei dati di manutenzione dal dispositivo (in minuti). Valori più bassi forniscono aggiornamenti più frequenti ma aumentano l'uso dell'API. Disponibile solo per le modalità di connessione Locale e Ibrida.",
                     "recirculation_duration": "Durata in minuti (5-300) utilizzata dall'entità interruttore Ricircolo quando attivato."
                 }
             }

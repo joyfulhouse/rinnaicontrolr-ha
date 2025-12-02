@@ -18,10 +18,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_MAINT_INTERVAL_ENABLED,
+    CONF_MAINT_INTERVAL_MINUTES,
     CONF_REFRESH_TOKEN,
     CONNECTION_MODE_CLOUD,
     CONNECTION_MODE_HYBRID,
     CONNECTION_MODE_LOCAL,
+    DEFAULT_MAINT_INTERVAL_MINUTES,
     DOMAIN as RINNAI_DOMAIN,
     LOGGER,
 )
@@ -30,9 +32,6 @@ if TYPE_CHECKING:
     from aiorinnai.api import API
 
     from .local import RinnaiLocalClient
-
-# Minimum time between maintenance retrievals
-MIN_TIME_BETWEEN_MAINTENANCE = timedelta(minutes=5)
 # Limit concurrent API calls per device
 PARALLEL_UPDATES = 1
 # Maximum retry attempts for transient errors
@@ -166,7 +165,8 @@ class RinnaiDeviceDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from aiorinnai.api import Unauthenticated
         from aiorinnai.errors import RequestError
 
-        access_token = getattr(self.api_client, "access_token", None)
+        # Use public property documented by aiorinnai API
+        access_token = self.api_client.access_token
 
         if not _is_token_expired(access_token):
             LOGGER.debug("Access token is still valid")
@@ -400,8 +400,9 @@ class RinnaiDeviceDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current_access = self._config_entry.data.get(CONF_ACCESS_TOKEN)
         current_refresh = self._config_entry.data.get(CONF_REFRESH_TOKEN)
 
-        new_access = getattr(self.api_client, "access_token", None)
-        new_refresh = getattr(self.api_client, "refresh_token", None)
+        # Use public properties documented by aiorinnai API
+        new_access = self.api_client.access_token
+        new_refresh = self.api_client.refresh_token
 
         if (
             new_access
@@ -846,9 +847,15 @@ class RinnaiDeviceDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _maybe_do_maintenance_retrieval(self) -> None:
         """Perform maintenance data retrieval if enough time has passed."""
         now = time.monotonic()
+        # Get configurable interval from options, default to 5 minutes
+        interval_minutes = self.options.get(
+            CONF_MAINT_INTERVAL_MINUTES, DEFAULT_MAINT_INTERVAL_MINUTES
+        )
+        min_time_between_maintenance = timedelta(minutes=interval_minutes)
+
         if (
             now - self._last_maintenance_retrieval
-            < MIN_TIME_BETWEEN_MAINTENANCE.total_seconds()
+            < min_time_between_maintenance.total_seconds()
         ):
             return
 
